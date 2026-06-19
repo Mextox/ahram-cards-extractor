@@ -34,15 +34,26 @@ const clearBtn = $("clearBtn");
 const optMerge = $("optMerge");
 const optConfirm = $("optConfirm");
 const logEl = $("log");
+const warnBanner = $("warnBanner");
 
 let currentFile = null;
 
 // ----------------------------- أدوات مساعدة -----------------------------
-function log(msg) {
-  logEl.textContent += msg + "\n";
+// level: "" | "ok" | "warn" | "err"  (يلوّن السطر في السجل)
+function log(msg, level) {
+  const line = document.createElement("div");
+  line.className = "logline" + (level ? " " + level : "");
+  line.textContent = msg;
+  logEl.appendChild(line);
   logEl.scrollTop = logEl.scrollHeight;
 }
-function clearLog() { logEl.textContent = ""; }
+function clearLog() { logEl.innerHTML = ""; }
+
+function showWarnBanner(count) {
+  warnBanner.textContent = `⚠️ يوجد ${count} تنبيه — هناك فئة/ورقة فيها بيانات ناقصة. راجع الأسطر المميّزة بالأصفر في السجل.`;
+  warnBanner.classList.remove("hidden");
+}
+function hideWarnBanner() { warnBanner.classList.add("hidden"); }
 
 function normalizeCell(ws, r, c) {
   // تحويل قيمة الخلية إلى نص نظيف مع محاولة الحفاظ على الأصفار الأولى
@@ -95,6 +106,22 @@ function findHeader(ws) {
     if (codeCol !== null && serialCol !== null) return { row: r, codeCol, serialCol };
   }
   return null;
+}
+
+function headerDiagnosis(ws) {
+  // هل ظهر عمود «الكود» و/أو «السيريال» في الورقة؟ (لاكتشاف عمود ناقص)
+  let sawCode = false, sawSerial = false;
+  if (!ws["!ref"]) return { sawCode, sawSerial };
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  const maxScan = Math.min(range.e.r, range.s.r + 24);
+  for (let r = range.s.r; r <= maxScan; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const s = normalizeCell(ws, r, c);
+      if (s === HEADER_CODE) sawCode = true;
+      else if (s === HEADER_SERIAL) sawSerial = true;
+    }
+  }
+  return { sawCode, sawSerial };
 }
 
 function rowsToCSV(rows) {
@@ -150,6 +177,9 @@ function askCategory(sheetTitle, company, ccode, detectedCode) {
 
 // ----------------------------- الاستخراج -----------------------------
 async function extract(file) {
+  const t0 = performance.now();       // لإثبات عدم وجود طلبات شبكة أثناء المعالجة
+  hideWarnBanner();
+
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
 
@@ -161,12 +191,25 @@ async function extract(file) {
   const outputs = [];                 // [{ path, rows }]
   const mergedByCompany = {};         // { company: rows[] } لوضع الدمج
   const summary = {};
+  const warnings = [];                // تنبيهات النواقص
   let totalRows = 0;
+
+  // تنبيه: يسجّل سطراً أصفر ويضيفه لقائمة التنبيهات
+  const warn = (m) => { log(m, "warn"); warnings.push(m); };
 
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
     const header = findHeader(ws);
-    if (!header) { log(`تخطّي ورقة (ليست ورقة منتج): ${sheetName}`); continue; }
+    if (!header) {
+      // قد تكون ورقة منتج لكن ينقصها أحد العمودين
+      const d = headerDiagnosis(ws);
+      if (d.sawCode !== d.sawSerial) {
+        warn(`⚠️ ${sheetName}: تبدو ورقة منتج لكن ينقصها عمود ${d.sawCode ? "«السيريال»" : "«الكود»"} — تم تخطّيها`);
+      } else {
+        log(`تخطّي ورقة (ليست ورقة منتج): ${sheetName}`);
+      }
+      continue;
+    }
 
     const compName = companyOf(sheetName);
     let ccode = companyCode(compName);
@@ -180,19 +223,31 @@ async function extract(file) {
       if (res.all) approveAll = true;
     }
 
-    if (!ccode) log(`تنبيه: شركة غير معروفة (كود الشركة فارغ): ${compName}`);
+    if (!ccode) warn(`⚠️ ${sheetName}: شركة غير معروفة (كود الشركة فارغ): ${compName}`);
+    if (!catcode) warn(`⚠️ ${sheetName}: كود الفئة فارغ (العمود الرابع)`);
 
-    // قراءة الصفوف
+    // قراءة الصفوف مع رصد النواقص
     const range = XLSX.utils.decode_range(ws["!ref"]);
     const rows = [];
+    let missSerial = 0, missCode = 0;
     for (let r = header.row + 1; r <= range.e.r; r++) {
       const code = normalizeCell(ws, r, header.codeCol);
       const serial = normalizeCell(ws, r, header.serialCol);
-      if (!code && !serial) continue;
+      if (!code && !serial) continue;            // صف فارغ تماماً = تجاهل
+      if (code && !serial) missSerial++;          // كود بلا سيريال
+      else if (serial && !code) missCode++;       // سيريال بلا كود
       rows.push([code, serial, ccode, catcode]); // الكود | السيريال | كود الشركة | كود الفئة
     }
 
-    if (rows.length === 0) { log(`تنبيه: لا توجد بيانات في الورقة: ${sheetName}`); continue; }
+    if (rows.length === 0) { warn(`⚠️ ${sheetName}: لا توجد بيانات في الورقة`); continue; }
+
+    // تنبيه بوجود نواقص داخل هذه الفئة
+    if (missSerial > 0 || missCode > 0) {
+      const parts = [];
+      if (missSerial > 0) parts.push(`${missSerial} كرت بدون سيريال`);
+      if (missCode > 0) parts.push(`${missCode} كرت بدون كود`);
+      warn(`⚠️ ${sheetName} (فئة ${catcode || "—"}): ${parts.join("، ")}`);
+    }
 
     const company = safeName(compName);
 
@@ -222,6 +277,19 @@ async function extract(file) {
   log("──────── الملخص ────────");
   for (const comp of Object.keys(summary)) log(`   ${comp}: ${summary[comp]} كرت`);
   log(`إجمالي الملفات: ${outputs.length}   |   إجمالي الكروت: ${totalRows}`);
+
+  // ملخص التنبيهات (النواقص)
+  if (warnings.length > 0) {
+    log(`⚠️ التنبيهات: ${warnings.length} — توجد فئة/ورقة فيها بيانات ناقصة (انظر الأسطر الصفراء أعلاه)`, "warn");
+    showWarnBanner(warnings.length);
+  } else {
+    log("✓ لا توجد نواقص — كل الفئات مكتملة (كود + سيريال).", "ok");
+  }
+
+  // إثبات الخصوصية: عدد طلبات الشبكة أثناء المعالجة (يجب أن يكون 0)
+  const netReqs = performance.getEntriesByType("resource").filter((e) => e.startTime >= t0);
+  log(`🛡️ إثبات: طلبات الشبكة أثناء المعالجة = ${netReqs.length} — لم يُرفع ملفك إلى أي خادم.`,
+      netReqs.length === 0 ? "ok" : "warn");
 
   if (outputs.length === 0) {
     log("لم يُستخرج أي ملف.");
@@ -276,6 +344,7 @@ clearBtn.addEventListener("click", () => {
   setFile(null);
   fileInput.value = "";
   clearLog();
+  hideWarnBanner();
 });
 
 runBtn.addEventListener("click", async () => {

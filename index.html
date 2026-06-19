@@ -14,6 +14,7 @@
       <div>
         <h1>فك كروت الاهرام</h1>
         <p class="tagline">استخراج الأكواد والسيريالات من ملف الفاتورة</p>
+        <p class="author">by: Mohaned</p>
       </div>
     </div>
   </header>
@@ -23,6 +24,18 @@
     <div class="privacy">
       🔒 <strong>خصوصية كاملة:</strong> كل المعالجة تتم داخل متصفحك. لا يتم رفع ملفك إلى أي خادم، ولا يُحفظ أي شيء.
     </div>
+
+    <!-- إثبات قابل للتحقق -->
+    <details class="proof">
+      <summary>🔎 كيف أتأكد بنفسي أنه يعمل داخل المتصفح ولا يرفع شيئاً؟</summary>
+      <ol>
+        <li><strong>اقطع الإنترنت</strong> بعد فتح الصفحة ثم جرّب الاستخراج — سيعمل كاملاً بدون اتصال، لأن كل المعالجة محلية.</li>
+        <li>افتح <strong>أدوات المطور (F12)</strong> ← تبويب <strong>Network</strong> ← استخرج ملفاً: لن ترى أي عملية رفع (upload) لملفك.</li>
+        <li>بعد كل عملية يعرض البرنامج في السجل <strong>عدّاد طلبات الشبكة أثناء المعالجة = 0</strong> كإثبات مباشر.</li>
+        <li>الكود <strong>مفتوح المصدر</strong> بالكامل ويمكنك مراجعته
+          <a href="https://github.com/Mextox/ahram-cards-extractor" target="_blank" rel="noopener">على GitHub</a>.</li>
+      </ol>
+    </details>
 
     <!-- منطقة رفع الملف -->
     <section id="drop" class="dropzone">
@@ -53,15 +66,19 @@
       <button id="clearBtn" class="btn ghost">مسح</button>
     </div>
 
+    <!-- تنبيه النواقص -->
+    <div id="warnBanner" class="warnbanner hidden"></div>
+
     <!-- السجل -->
     <section class="logwrap">
       <div class="logbar">السجل</div>
-      <pre id="log" class="log"></pre>
+      <div id="log" class="log"></div>
     </section>
   </main>
 
   <footer class="foot">
     <span>فك كروت الاهرام — يعمل بالكامل في المتصفح بدون خوادم.</span>
+    <span class="by">صُنع بواسطة <strong>Mohaned</strong></span>
   </footer>
 
   <!-- نافذة تأكيد كود الفئة -->

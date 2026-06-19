@@ -35,6 +35,7 @@ body {
 .logo { font-size: 34px; }
 .topbar h1 { margin: 0; font-size: 22px; }
 .tagline { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.author { margin: 3px 0 0; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .3px; }
 
 /* الحاوية */
 .container {
@@ -55,6 +56,41 @@ body {
   font-size: 14px;
   margin-bottom: 18px;
 }
+
+/* قسم الإثبات */
+.proof {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 16px;
+  margin-bottom: 18px;
+  font-size: 14px;
+}
+.proof summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 700;
+  color: var(--accent);
+  list-style: none;
+}
+.proof summary::-webkit-details-marker { display: none; }
+.proof[open] summary { border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.proof ol { margin: 6px 18px 12px 0; padding: 0; color: var(--muted); line-height: 1.9; }
+.proof li { margin-bottom: 6px; }
+.proof a { color: var(--accent); }
+
+/* شريط تنبيه النواقص */
+.warnbanner {
+  background: linear-gradient(90deg, #78350f66, #92400e55);
+  border: 1px solid #f59e0b88;
+  color: #fde68a;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+.warnbanner.hidden { display: none; }
 
 /* منطقة الإفلات */
 .dropzone {
@@ -135,16 +171,19 @@ body {
   padding: 14px;
   background: #0b1120;
   color: #cbd5e1;
-  font-family: "Consolas", "Courier New", monospace;
+  font-family: "Consolas", "Courier New", "Noto Naskh Arabic", monospace;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   min-height: 160px;
   max-height: 320px;
   overflow: auto;
-  white-space: pre-wrap;
-  direction: ltr;
-  text-align: left;
+  direction: rtl;
+  text-align: right;
 }
+.logline { white-space: pre-wrap; word-break: break-word; }
+.logline.ok   { color: #4ade80; }
+.logline.warn { color: #fbbf24; font-weight: 600; }
+.logline.err  { color: #f87171; font-weight: 600; }
 
 /* التذييل */
 .foot {
@@ -153,7 +192,12 @@ body {
   font-size: 12px;
   padding: 16px;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
+.foot .by { color: var(--accent); }
+.foot .by strong { color: #e2e8f0; }
 
 /* النافذة المنبثقة */
 .overlay {
