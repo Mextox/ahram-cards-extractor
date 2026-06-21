@@ -1,10 +1,12 @@
 /* =====================================================================
    فك كروت الاهرام — منطق الاستخراج (يعمل بالكامل داخل المتصفح)
-   الإصدار v1.1
+   الإصدار v1.2
    لا يُرفع أي ملف ولا تُحفظ أي بيانات على أي خادم.
    يطابق منطق برنامج سطح المكتب card_extractor_apple.py
    v1.1: اكتشاف مرن لأعمدة الكود/السيريال — يتحمّل تغيّر مكان العمود
          أو اختلاف تسميته (مثل «الرقم السري (PIN)») بين الفواتير.
+   v1.2: اكتشاف مرن لاسم الشركة — يتحمّل اختلاف التهجئة واللغة وإعادة
+         التسمية والأخطاء الإملائية (مثل «Etisalst» بدل «Etisalat»).
    ===================================================================== */
 
 "use strict";
@@ -13,19 +15,21 @@
 const HEADER_CODE = "الكود";
 const HEADER_SERIAL = "السيريال";
 
-// أكواد الشركات (تُطابَق بأول كلمة من اسم الورقة، إنجليزي أو عربي)
-const COMPANY_CODES = {
-  vodafone: "010",
-  etsalat: "011",
-  etisalat: "011",
-  orange: "012",
-  we: "015",
-  "فودافون": "010",
-  "اتصالات": "011",
-  "اورانج": "012",
-  "اورنج": "012",
-  "وي": "015",
-};
+// أكواد الشركات — مطابقة مرنة تتحمّل اختلاف التهجئة واللغة وإعادة التسمية والأخطاء الإملائية.
+// لكل شركة:
+//   exact    : أسماء مطابِقة تماماً (إنجليزي/عربي) — الأسرع والأدق
+//   contains : نصوص مميّزة إن ظهرت في الاسم دلّت على الشركة (تعالج العربي/الاختصار/إعادة التسمية)
+//   fuzzy    : أسماء إنجليزية تُقاس عليها أقرب تهجئة (تعالج الأخطاء الإملائية). أطوال ≥5 فقط.
+const COMPANIES = [
+  { code: "010", exact: ["vodafone", "فودافون"],
+    contains: ["voda", "فودا"], fuzzy: ["vodafone"] },
+  { code: "011", exact: ["etisalat", "etsalat", "اتصالات"],
+    contains: ["etis", "etsa", "atis", "اتصال", "e&"], fuzzy: ["etisalat"] },
+  { code: "012", exact: ["orange", "اورانج", "اورنج", "mobinil", "موبينيل"],
+    contains: ["orang", "اوران", "اورن", "mobinil", "موبين"], fuzzy: ["orange", "mobinil"] },
+  { code: "015", exact: ["we", "وي", "te data", "tedata", "telecom egypt"],
+    contains: ["وي", "te data", "tedata", "telecom"], fuzzy: [] }, // «we» أقصر من أن تُطابَق تقريبياً بأمان
+];
 
 // ----------------------------- عناصر الواجهة -----------------------------
 const $ = (id) => document.getElementById(id);
@@ -75,9 +79,50 @@ function companyOf(sheetName) {
   return parts[0] || sheetName.trim();
 }
 
-function companyCode(company) {
-  // كود الشركة الرقمي (Vodafone -> 010). فارغ إذا كانت الشركة غير معروفة
-  return COMPANY_CODES[company.trim().toLowerCase()] || "";
+function levenshtein(a, b) {
+  // مسافة التحرير بين نصّين (عدد الإضافات/الحذف/الاستبدال) — لمطابقة التهجئة التقريبية
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let cur = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+
+function companyCode(company, sheetName) {
+  // كود الشركة الرقمي (Vodafone -> 010)، بمطابقة مرنة على ثلاث مراحل.
+  // فارغ يبقى فارغاً (مع تنبيه) إذا كانت الشركة غير معروفة فعلاً.
+  const w = normHeader(company);                       // أول كلمة (الشركة)
+  const full = normHeader(sheetName || company);       // اسم الورقة كاملاً (لتواقيع متعددة الكلمات)
+  if (!w) return "";
+
+  // 1) تطابق دقيق
+  for (const co of COMPANIES) if (co.exact.includes(w)) return co.code;
+
+  // 2) توقيع مميّز ضمن الاسم (يعالج العربي/الإنجليزي/الاختصار/إعادة التسمية مثل Mobinil)
+  for (const co of COMPANIES)
+    for (const sig of co.contains)
+      if (w.includes(sig) || full.includes(sig)) return co.code;
+
+  // 3) أقرب تهجئة (يعالج الأخطاء الإملائية مثل Etisalst/Vodfone/Ornage)
+  //    على الأسماء الطويلة فقط (≥5) لتفادي مطابقة كلمة قصيرة بالخطأ.
+  let best = { code: "", dist: Infinity };
+  for (const co of COMPANIES)
+    for (const name of co.fuzzy) {
+      if (name.length < 5) continue;
+      const d = levenshtein(w, name);
+      const thresh = Math.max(1, Math.floor(name.length / 3)); // 8→2، 6→2، 5→1
+      if (d <= thresh && d < best.dist) best = { code: co.code, dist: d };
+    }
+  return best.code;
 }
 
 function categoryCode(sheetName) {
@@ -268,7 +313,7 @@ async function extract(file) {
     }
 
     const compName = companyOf(sheetName);
-    let ccode = companyCode(compName);
+    let ccode = companyCode(compName, sheetName);
     let catcode = categoryCode(sheetName);
 
     // نافذة تأكيد كود الفئة (العمود الرابع)
