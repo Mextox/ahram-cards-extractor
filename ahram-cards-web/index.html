@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>فك كروت الاهرام</title>
+  <meta name="description" content="أداة آمنة لاستخراج أكواد وسيريالات كروت الشحن من ملف فاتورة إكسل — كل المعالجة داخل متصفحك بدون رفع أي بيانات." />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📇</span>
+      <div>
+        <h1>فك كروت الاهرام</h1>
+        <p class="tagline">استخراج الأكواد والسيريالات من ملف الفاتورة</p>
+        <p class="author">by: Mohaned</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- شارة الأمان -->
+    <div class="privacy">
+      🔒 <strong>خصوصية كاملة:</strong> كل المعالجة تتم داخل متصفحك. لا يتم رفع ملفك إلى أي خادم، ولا يُحفظ أي شيء.
+    </div>
+
+    <!-- إثبات قابل للتحقق -->
+    <details class="proof">
+      <summary>🔎 كيف أتأكد بنفسي أنه يعمل داخل المتصفح ولا يرفع شيئاً؟</summary>
+      <ol>
+        <li><strong>اقطع الإنترنت</strong> بعد فتح الصفحة ثم جرّب الاستخراج — سيعمل كاملاً بدون اتصال، لأن كل المعالجة محلية.</li>
+        <li>افتح <strong>أدوات المطور (F12)</strong> ← تبويب <strong>Network</strong> ← استخرج ملفاً: لن ترى أي عملية رفع (upload) لملفك.</li>
+        <li>بعد كل عملية يعرض البرنامج في السجل <strong>عدّاد طلبات الشبكة أثناء المعالجة = 0</strong> كإثبات مباشر.</li>
+        <li>الكود <strong>مفتوح المصدر</strong> بالكامل ويمكنك مراجعته
+          <a href="https://github.com/Mextox/ahram-cards-extractor" target="_blank" rel="noopener">على GitHub</a>.</li>
+      </ol>
+    </details>
+
+    <!-- منطقة رفع الملف -->
+    <section id="drop" class="dropzone">
+      <input type="file" id="file" accept=".xlsx,.xlsm,.xls" hidden />
+      <div class="dz-inner">
+        <div class="dz-icon">⬆️</div>
+        <p class="dz-title">اسحب ملف الإكسل هنا أو اضغط للاختيار</p>
+        <p class="dz-sub">الصيغ المدعومة: &lrm;.xlsx / .xlsm / .xls</p>
+        <p id="fileName" class="dz-file"></p>
+      </div>
+    </section>
+
+    <!-- الخيارات -->
+    <section class="options">
+      <label class="opt">
+        <input type="checkbox" id="optMerge" />
+        <span>دمج فئات كل شركة في ملف واحد خاص بها <small>(يميّزها كود الفئة)</small></span>
+      </label>
+      <label class="opt">
+        <input type="checkbox" id="optConfirm" checked />
+        <span>عرض نافذة تأكيد كود الفئة لكل ورقة</span>
+      </label>
+    </section>
+
+    <!-- الأزرار -->
+    <div class="actions">
+      <button id="runBtn" class="btn primary" disabled>🚀 استخراج</button>
+      <button id="clearBtn" class="btn ghost">مسح</button>
+    </div>
+
+    <!-- تنبيه النواقص -->
+    <div id="warnBanner" class="warnbanner hidden"></div>
+
+    <!-- السجل -->
+    <section class="logwrap">
+      <div class="logbar">السجل</div>
+      <div id="log" class="log"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>فك كروت الاهرام — يعمل بالكامل في المتصفح بدون خوادم.</span>
+    <span class="by">صُنع بواسطة <strong>Mohaned</strong></span>
+    <span class="ver">الإصدار v1.2 — اكتشاف مرن للأعمدة واسم الشركة</span>
+  </footer>
+
+  <!-- نافذة تأكيد كود الفئة -->
+  <div id="modalOverlay" class="overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>تأكيد كود الفئة</h2>
+      <p class="m-row">📄 الورقة: <strong id="mSheet"></strong></p>
+      <p class="m-row muted">🏢 الشركة: <strong id="mCompany"></strong></p>
+      <label class="m-field">
+        كود الفئة (العمود الرابع):
+        <input type="text" id="mCode" inputmode="numeric" />
+      </label>
+      <div class="m-actions">
+        <button class="btn primary" id="mApprove">✔ موافقة</button>
+        <button class="btn" id="mApproveAll">✔✔ موافقة على الكل</button>
+        <button class="btn ghost" id="mSkip">تخطّي الورقة</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- المكتبات (محلية — بدون أي اتصال خارجي) -->
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
