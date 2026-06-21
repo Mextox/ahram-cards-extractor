@@ -1,7 +1,10 @@
 /* =====================================================================
    فك كروت الاهرام — منطق الاستخراج (يعمل بالكامل داخل المتصفح)
+   الإصدار v1.1
    لا يُرفع أي ملف ولا تُحفظ أي بيانات على أي خادم.
    يطابق منطق برنامج سطح المكتب card_extractor_apple.py
+   v1.1: اكتشاف مرن لأعمدة الكود/السيريال — يتحمّل تغيّر مكان العمود
+         أو اختلاف تسميته (مثل «الرقم السري (PIN)») بين الفواتير.
    ===================================================================== */
 
 "use strict";
@@ -91,25 +94,72 @@ function safeName(name) {
   return out || "sheet";
 }
 
+// مطابقة مرنة لأسماء أعمدة الرأس (يتحمّل اختلاف التسمية بين الفواتير)
+function normHeader(s) { return String(s).toLowerCase().replace(/\s+/g, " ").trim(); }
+
+function isSerialHeader(s) {
+  // عمود السيريال: «السيريال» / «السريال» / Serial …
+  const n = normHeader(s);
+  return n.includes("سيريال") || n.includes("سريال") || n.includes("serial");
+}
+
+function isCodeHeader(s) {
+  // عمود الكود/الرقم السري: «الكود» / «الرقم السري (PIN)» / PIN / «كود الشحن» …
+  const n = normHeader(s);
+  return n === "الكود" || n.includes("الرقم السري") || n.includes("الرقم السرى") ||
+         n.includes("pin") || n.includes("كود الشحن") || n.includes("رقم الشحن") || n.includes("كود الكارت");
+}
+
+function countNonEmpty(ws, col, fromRow, toRow) {
+  // عدد الخلايا غير الفارغة في عمود ضمن نطاق صفوف (لاختيار العمود الذي يحوي بيانات فعلاً)
+  let n = 0;
+  for (let r = fromRow; r <= toRow; r++) if (normalizeCell(ws, r, col) !== "") n++;
+  return n;
+}
+
 function findHeader(ws) {
-  // البحث عن صف رأس الجدول وإرجاع {row, codeCol, serialCol} (0-based) أو null
+  // البحث المرن عن صف رأس الجدول.
+  // يُرجع {row, codeCol, serialCol, codeHeader, serialHeader, codeFromFallback} أو null.
+  // عند وجود أكثر من عمود مرشّح للكود: يُفضّل «الكود» إن كان يحوي بيانات،
+  // وإلا يعود إلى العمود الذي يحوي بيانات فعلاً (مثل «الرقم السري (PIN)»).
   if (!ws["!ref"]) return null;
   const range = XLSX.utils.decode_range(ws["!ref"]);
   const maxScan = Math.min(range.e.r, range.s.r + 24); // حتى 25 صفاً
   for (let r = range.s.r; r <= maxScan; r++) {
-    let codeCol = null, serialCol = null;
+    const codeCols = [], serialCols = [];
+    let exactCodeCol = null, exactSerialCol = null;
+    const headerText = {};
     for (let c = range.s.c; c <= range.e.c; c++) {
       const s = normalizeCell(ws, r, c);
-      if (s === HEADER_CODE) codeCol = c;
-      else if (s === HEADER_SERIAL) serialCol = c;
+      if (!s) continue;
+      headerText[c] = s;
+      if (isCodeHeader(s)) { codeCols.push(c); if (normHeader(s) === "الكود") exactCodeCol = c; }
+      if (isSerialHeader(s)) { serialCols.push(c); if (normHeader(s) === "السيريال") exactSerialCol = c; }
     }
-    if (codeCol !== null && serialCol !== null) return { row: r, codeCol, serialCol };
+    if (codeCols.length === 0 || serialCols.length === 0) continue;
+
+    // يختار العمود: «الدقيق» إن كان به بيانات، وإلا الأكثر امتلاءً، وإلا الدقيق/الأول
+    const pick = (cols, exact) => {
+      if (exact !== null && countNonEmpty(ws, exact, r + 1, range.e.r) > 0) return exact;
+      let best = null, bestN = -1;
+      for (const c of cols) { const n = countNonEmpty(ws, c, r + 1, range.e.r); if (n > bestN) { bestN = n; best = c; } }
+      if (bestN > 0) return best;
+      return exact !== null ? exact : cols[0];
+    };
+    const codeCol = pick(codeCols, exactCodeCol);
+    const serialCol = pick(serialCols, exactSerialCol);
+    return {
+      row: r, codeCol, serialCol,
+      codeHeader: headerText[codeCol] || HEADER_CODE,
+      serialHeader: headerText[serialCol] || HEADER_SERIAL,
+      codeFromFallback: normHeader(headerText[codeCol] || "") !== "الكود",
+    };
   }
   return null;
 }
 
 function headerDiagnosis(ws) {
-  // هل ظهر عمود «الكود» و/أو «السيريال» في الورقة؟ (لاكتشاف عمود ناقص)
+  // هل ظهر عمود كود و/أو سيريال (بأي تسمية) في الورقة؟ (لاكتشاف عمود ناقص)
   let sawCode = false, sawSerial = false;
   if (!ws["!ref"]) return { sawCode, sawSerial };
   const range = XLSX.utils.decode_range(ws["!ref"]);
@@ -117,8 +167,9 @@ function headerDiagnosis(ws) {
   for (let r = range.s.r; r <= maxScan; r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const s = normalizeCell(ws, r, c);
-      if (s === HEADER_CODE) sawCode = true;
-      else if (s === HEADER_SERIAL) sawSerial = true;
+      if (!s) continue;
+      if (isCodeHeader(s)) sawCode = true;
+      if (isSerialHeader(s)) sawSerial = true;
     }
   }
   return { sawCode, sawSerial };
@@ -209,6 +260,11 @@ async function extract(file) {
         log(`تخطّي ورقة (ليست ورقة منتج): ${sheetName}`);
       }
       continue;
+    }
+
+    // شفافية: إذا أُخذ الكود من عمود غير «الكود» (لأن عمود «الكود» فارغ) نُعلم المستخدم
+    if (header.codeFromFallback) {
+      log(`ℹ️ ${sheetName}: عمود «الكود» فارغ — تم أخذ الكود من العمود «${header.codeHeader}»`, "ok");
     }
 
     const compName = companyOf(sheetName);

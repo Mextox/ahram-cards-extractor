@@ -198,6 +198,7 @@ body {
 }
 .foot .by { color: var(--accent); }
 .foot .by strong { color: #e2e8f0; }
+.foot .ver { color: var(--muted); font-size: 11px; }
 
 /* النافذة المنبثقة */
 .overlay {
